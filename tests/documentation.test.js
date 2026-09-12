@@ -18,9 +18,9 @@ test('README references resolve to files inside the project', () => {
   }
 })
 
-test('the showcase includes seven valid screenshots, including a mobile viewport', () => {
+test('the showcase includes ten valid screenshots, including a mobile viewport', () => {
   const screenshots = [...new Set(local.filter(reference => reference.endsWith('.png')))]
-  assert.equal(screenshots.length, 7)
+  assert.equal(screenshots.length, 10)
   for (const reference of screenshots) {
     const image = PNG.sync.read(readFileSync(new URL(reference, root)))
     assert.ok(image.width >= 390 && image.height >= 800, `${reference} is undersized`)

@@ -24,6 +24,8 @@ function makeAtlas() {
 export class AsciiRenderer {
   constructor(canvas) {
     this.cellSize = 5
+    this.mode = 'ascii'
+    this.stats = { drawCalls: 0, triangles: 0, textures: 0, geometries: 0 }
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'high-performance' })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.target = new THREE.WebGLRenderTarget(1, 1, {
@@ -38,6 +40,8 @@ export class AsciiRenderer {
       glyphCount: { value: characters.length },
       glow: { value: 1 },
       palette: { value: 0 },
+      renderMode: { value: 0 },
+      reveal: { value: 0.5 },
     }
     this.material = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -57,6 +61,8 @@ export class AsciiRenderer {
         uniform float glyphCount;
         uniform float glow;
         uniform int palette;
+        uniform int renderMode;
+        uniform float reveal;
         varying vec2 screenUv;
 
         float noise(vec2 cell) {
@@ -64,6 +70,11 @@ export class AsciiRenderer {
         }
 
         void main() {
+          if (renderMode == 1 || (renderMode == 2 && screenUv.x > reveal)) {
+            vec3 source = texture2D(sceneTexture, screenUv).rgb;
+            gl_FragColor = vec4(min(pow(max(source, vec3(0.0)), vec3(0.4545)) * 1.38, vec3(1.0)), 1.0);
+            return;
+          }
           vec2 cell = floor(screenUv * grid);
           vec2 center = (cell + 0.5) / grid;
           vec2 offset = 0.26 / grid;
@@ -103,8 +114,22 @@ export class AsciiRenderer {
     this.columns = Math.max(32, Math.min(360, Math.floor(this.width / this.cellSize)))
     this.rows = Math.max(24, Math.floor(this.height / (this.cellSize * 1.65)))
     this.uniforms.grid.value.set(this.columns, this.rows)
-    this.target.setSize(this.columns * 2, this.rows * 2)
+    const scale = Math.min(1.5, this.renderer.getPixelRatio(), 1920 / this.width)
+    this.target.setSize(this.mode === 'ascii' ? this.columns * 2 : Math.round(this.width * scale), this.mode === 'ascii' ? this.rows * 2 : Math.round(this.height * scale))
     this.renderer.setSize(this.width, this.height, false)
+  }
+
+  setMode(mode) {
+    const index = ['ascii', 'solid', 'split'].indexOf(mode)
+    if (index < 0) throw new RangeError(`Unknown render mode: ${mode}`)
+    this.mode = mode
+    this.uniforms.renderMode.value = index
+    if (this.width && this.height) this.resize(this.width, this.height)
+  }
+
+  setReveal(value) {
+    if (!Number.isFinite(value)) throw new TypeError('Reveal must be a finite number')
+    this.uniforms.reveal.value = THREE.MathUtils.clamp(value, 0, 1)
   }
 
   setDensity(cellSize) {
@@ -115,6 +140,10 @@ export class AsciiRenderer {
   render(scene, camera) {
     this.renderer.setRenderTarget(this.target)
     this.renderer.render(scene, camera)
+    this.stats.drawCalls = this.renderer.info.render.calls
+    this.stats.triangles = this.renderer.info.render.triangles
+    this.stats.textures = this.renderer.info.memory.textures
+    this.stats.geometries = this.renderer.info.memory.geometries
     this.renderer.setRenderTarget(null)
     this.renderer.render(this.outputScene, this.outputCamera)
   }

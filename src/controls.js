@@ -24,6 +24,8 @@ export class Controls {
       if (!event.repeat && event.code === 'KeyP') actions.pause()
       if (!event.repeat && event.code === 'KeyM') actions.map()
       if (!event.repeat && event.code === 'KeyR') actions.reset()
+      if (!event.repeat && event.code === 'KeyQ') actions.scan?.()
+      if (!event.repeat && event.code === 'KeyL') actions.lab?.()
       if (!this.enabled || !movementKeys.has(event.code)) return
       event.preventDefault()
       actions.manual()

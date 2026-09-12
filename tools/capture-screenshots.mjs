@@ -38,6 +38,14 @@ try {
   await mkdir(destination, { recursive: true })
   const page = await openPage({ viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 })
   await capture(page, 'night-city.png')
+  await page.getByRole('button', { name: 'City Lab', exact: true }).click()
+  await page.getByRole('button', { name: 'SPLIT', exact: true }).click()
+  await capture(page, 'city-lab.png')
+  await page.getByRole('button', { name: 'Close City Lab', exact: true }).click()
+  await capture(page, 'comparison.png')
+  await page.getByRole('button', { name: 'City Lab', exact: true }).click()
+  await page.getByRole('button', { name: 'ASCII', exact: true }).click()
+  await page.getByRole('button', { name: 'Close City Lab', exact: true }).click()
   await page.evaluate(() => {
     const app = window.__city
     const building = app.layout.chunks.get('0:0').building
@@ -46,6 +54,10 @@ try {
     app.teleport(position, Math.atan2(position.x - target.x, position.z - target.z), 0.14)
   })
   await capture(page, 'storefront.png')
+  await page.getByRole('button', { name: 'Scan building (Q)', exact: true }).click()
+  await page.waitForFunction(() => window.__city.scanner.target !== null)
+  await capture(page, 'scan.png')
+  await page.getByRole('button', { name: 'Clear scan', exact: true }).click()
   for (const [name, file] of [['NIGHT WIRE', 'noodle-bar.png'], ['GHOST SIGNAL', 'arcade.png'], ['SECOND SKIN', 'cyber-clinic.png']]) {
     await page.getByRole('button', { name: 'Places and interiors', exact: true }).click()
     await page.getByRole('button', { name: `Visit ${name}`, exact: true }).click()

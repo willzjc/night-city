@@ -10,6 +10,8 @@ import { createCity } from './world.js'
 import { createWalker } from './physics.js'
 import { Controls } from './controls.js'
 import { createInterface } from './ui.js'
+import { CityScanner } from './scanner.js'
+import { createLab } from './lab.js'
 
 const ui = createInterface()
 const elements = ui.elements
@@ -34,6 +36,9 @@ async function initialize() {
   }
   const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 600)
   camera.rotation.order = 'YXZ'
+  const scanner = new CityScanner(city.scene, layout)
+  const lab = createLab(ui, { layout, city, walker, renderer, scanner })
+  let checkpoint = null
   const state = {
     paused: false,
     touring: false,
@@ -50,6 +55,7 @@ async function initialize() {
   let hudElapsed = 1
   let bob = 0
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
+  scanner.reducedMotion = reducedMotion.matches
   city.weather.enabled = !reducedMotion.matches
   elements['rain-toggle'].checked = city.weather.enabled
   const tour = { column: 0, row: streetIndex(SPAWN.z, 'z') - 3 }
@@ -63,6 +69,8 @@ async function initialize() {
     pause: () => setPaused(!state.paused),
     map: () => setMap(!state.showMap),
     reset: resetPosition,
+    scan: scanCity,
+    lab: () => openLab(elements['lab-panel'].hidden),
   })
 
   function updateViewState() {
@@ -84,6 +92,8 @@ async function initialize() {
     if (state.touring === touring) return
     state.touring = touring
     if (touring) {
+      scanner.clear()
+      lab.showScan(false)
       setPaused(false)
       controls.release()
       controls.reset()
@@ -102,6 +112,8 @@ async function initialize() {
 
   function resetPosition() {
     setTour(false)
+    scanner.clear()
+    lab.showScan(false)
     controls.reset()
     layout.update({ ...SPAWN, y: 1.675 })
     walker.syncLayout(layout)
@@ -118,7 +130,7 @@ async function initialize() {
   }
 
   function settings(open, restoreFocus = true) {
-    if (open) { controls.release(); places(false, false) }
+    if (open) { controls.release(); places(false, false); openLab(false, false) }
     elements['settings-panel'].hidden = !open
     elements['settings-button'].setAttribute('aria-expanded', String(open))
     if (open) elements['glyph-size'].focus()
@@ -129,6 +141,7 @@ async function initialize() {
     if (open) {
       controls.release()
       settings(false, false)
+      openLab(false, false)
       for (const button of document.querySelectorAll('[data-venue]')) {
         button.disabled = !layout.buildings.some(building => building.shop === button.dataset.venue)
       }
@@ -138,6 +151,40 @@ async function initialize() {
     elements['places-button'].setAttribute('aria-expanded', String(open))
     if (open) elements['places-panel'].querySelector('.place-button:not(:disabled)')?.focus()
     else if (restoreFocus) elements['places-button'].focus()
+  }
+
+  function openLab(open, restoreFocus = true) {
+    if (open) {
+      controls.release()
+      settings(false, false)
+      places(false, false)
+    }
+    elements['lab-panel'].hidden = !open
+    elements['lab-button'].setAttribute('aria-expanded', String(open))
+    document.body.classList.toggle('lab-open', open)
+    if (open) {
+      lab.update({ position: walker.position, fps })
+      elements['lab-panel'].querySelector('[data-render-mode][aria-pressed="true"]').focus()
+    } else if (restoreFocus) elements['lab-button'].focus()
+  }
+
+  function scanCity() {
+    const direction = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(controls.pitch, controls.yaw, 0, 'YXZ'))
+    scanner.trigger(walker.position, direction)
+    lab.showScan(true)
+    hudElapsed = 1
+  }
+
+  function goToScanned(interior) {
+    const building = scanner.target?.building
+    if (!building) return
+    controls.release()
+    setPaused(false)
+    if (interior) visit(building.shop, false, building)
+    else moveTo({ x: building.x, z: building.z + building.depth / 2 + 4 }, 0, 0.06)
+    scanner.select(building, walker.position)
+    lab.showScan(true)
+    canvas.focus({ preventScroll: true })
   }
 
   function moveTo(position, yaw = 0, pitch = 0) {
@@ -155,11 +202,11 @@ async function initialize() {
     hudElapsed = 1
   }
 
-  function visit(type, apartment = false) {
+  function visit(type, apartment = false, specificBuilding = null) {
     const position = walker.position
     const candidates = layout.buildings.filter(building => apartment ? building.use === 'APARTMENTS' : building.shop === type)
     candidates.sort((first, second) => Math.hypot(first.x - position.x, first.z - position.z) - Math.hypot(second.x - position.x, second.z - position.z))
-    const building = candidates[0]
+    const building = specificBuilding ?? candidates[0]
     if (!building) { notice('No matching address in this neighborhood.'); return }
     const level = apartment ? Math.min(2, building.floors - 1) : 0
     const floor = createFloor(building, level)
@@ -189,13 +236,45 @@ async function initialize() {
     hudElapsed = 1
   }
 
-  elements['enter-button'].addEventListener('click', () => { settings(false, false); places(false, false); controls.engage() }, options)
+  elements['enter-button'].addEventListener('click', () => { settings(false, false); places(false, false); openLab(false, false); controls.engage() }, options)
   elements['pause-button'].addEventListener('click', () => setPaused(!state.paused), options)
   elements['map-button'].addEventListener('click', () => setMap(!state.showMap), options)
   elements['settings-button'].addEventListener('click', () => settings(elements['settings-panel'].hidden), options)
   elements['close-settings'].addEventListener('click', () => settings(false), options)
   elements['places-button'].addEventListener('click', () => places(elements['places-panel'].hidden), options)
   elements['close-places'].addEventListener('click', () => places(false), options)
+  elements['lab-button'].addEventListener('click', () => openLab(elements['lab-panel'].hidden), options)
+  elements['close-lab'].addEventListener('click', () => openLab(false), options)
+  elements['scan-button'].addEventListener('click', scanCity, options)
+  elements['clear-scan'].addEventListener('click', () => { scanner.clear(); lab.showScan(false); elements['scan-button'].focus() }, options)
+  elements['scan-entrance'].addEventListener('click', () => goToScanned(false), options)
+  elements['scan-interior'].addEventListener('click', () => goToScanned(true), options)
+  document.querySelectorAll('[data-render-mode]').forEach(button => button.addEventListener('click', () => { lab.setMode(button.dataset.renderMode); hudElapsed = 1 }, options))
+  for (const id of ['lab-reveal', 'reveal-position']) elements[id].addEventListener('input', event => { lab.setReveal(event.target.value); hudElapsed = 1 }, options)
+  elements['stream-grid'].addEventListener('click', event => {
+    const cell = event.target.closest('[data-block-key]')
+    if (cell) {
+      if (!lab.selectBlock(cell.dataset.blockKey)) notice('Public plaza / no building selected.')
+      else if (window.matchMedia('(max-width: 700px)').matches) openLab(false, false)
+    }
+    hudElapsed = 1
+  }, options)
+  elements['lab-jump'].addEventListener('click', () => {
+    checkpoint = { position: { ...walker.position, y: walker.position.y - 0.8 }, yaw: controls.yaw, pitch: controls.pitch }
+    const street = streetIndex(walker.position.z, 'z', layout.seed)
+    scanner.clear()
+    lab.showScan(false)
+    moveTo({ x: walker.position.x + 1000, z: streetCoordinate(street, 'z', layout.seed) }, -Math.PI / 2, 0.12)
+    elements['lab-return'].disabled = false
+  }, options)
+  elements['lab-return'].addEventListener('click', () => {
+    if (!checkpoint) return
+    scanner.clear()
+    lab.showScan(false)
+    moveTo(checkpoint.position, checkpoint.yaw, checkpoint.pitch)
+    checkpoint = null
+    elements['lab-return'].disabled = true
+  }, options)
   document.querySelectorAll('[data-venue]').forEach(button => button.addEventListener('click', () => visit(button.dataset.venue), options))
   elements['apartment-button'].addEventListener('click', () => visit('APARTMENTS', true), options)
   elements['street-button'].addEventListener('click', () => {
@@ -248,6 +327,7 @@ async function initialize() {
   window.addEventListener('keydown', event => {
     if (event.code === 'Escape' && !elements['settings-panel'].hidden) settings(false)
     if (event.code === 'Escape' && !elements['places-panel'].hidden) places(false)
+    if (event.code === 'Escape' && !elements['lab-panel'].hidden) openLab(false)
   }, options)
   document.addEventListener('visibilitychange', () => { if (document.hidden) setPaused(true) }, options)
   canvas.addEventListener('webglcontextlost', event => {
@@ -260,7 +340,8 @@ async function initialize() {
   resize()
 
   renderer.renderer.setAnimationLoop(now => {
-    const delta = Math.min(Math.max(0, (now - previous) / 1000), 0.08)
+    const elapsed = Math.max(0, (now - previous) / 1000)
+    const delta = Math.min(elapsed, 0.08)
     previous = now
     if (!state.paused) {
       controls.update(delta)
@@ -290,6 +371,7 @@ async function initialize() {
       }
       if (stepped) controls.jumpRequested = false
       city.update(delta, walker.position)
+      scanner.update(delta, walker.position)
       bob += Math.hypot(walker.velocity.x, walker.velocity.z) * delta
     }
     camera.position.copy(walker.position)
@@ -297,10 +379,11 @@ async function initialize() {
     camera.position.z -= layout.origin.z
     if (!reducedMotion.matches && walker.grounded) camera.position.y += Math.sin(bob * 2.4) * 0.024 * Math.min(1, Math.hypot(walker.velocity.x, walker.velocity.z) / 4.8)
     camera.rotation.set(controls.pitch, controls.yaw, 0)
+    if (state.paused) scanner.update(0, walker.position)
     renderer.render(city.scene, camera)
     frames++
     fpsFrames++
-    fpsElapsed += delta
+    fpsElapsed += elapsed
     hudElapsed += delta
     if (fpsElapsed >= 0.5) {
       fps = fpsFrames / fpsElapsed
@@ -309,6 +392,7 @@ async function initialize() {
     }
     if (hudElapsed > 0.12) {
       ui.update({ position: walker.position, yaw: controls.yaw, time: city.elapsed, fps, layout, renderer })
+      lab.update({ position: walker.position, fps })
       hudElapsed = 0
     }
     if (state.noticeUntil && now > state.noticeUntil) elements.notice.hidden = true
@@ -321,12 +405,14 @@ async function initialize() {
     walker,
     city,
     layout,
+    scanner,
     teleport: moveTo,
     snapshot: () => ({ position: walker.position, origin: layout.origin, location: layout.locationAt(walker.position), blocks: layout.blocks.length, buildings: layout.buildings.length, floors: layout.interiors.size, colliders: walker.world.colliders.len(), renderedBlocks: city.chunks.size, yaw: controls.yaw, pitch: controls.pitch, paused: state.paused, touring: state.touring, time: city.elapsed, frames, columns: renderer.columns, rows: renderer.rows, palette: renderer.uniforms.palette.value, glow: renderer.uniforms.glow.value, fov: camera.fov }),
   }
   dispose = () => {
     events.abort()
     controls.dispose()
+    scanner.dispose()
     renderer.dispose()
     walker.dispose()
     city.dispose()

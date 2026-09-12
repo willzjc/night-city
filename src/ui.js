@@ -1,8 +1,8 @@
-import { createIcons, SquareTerminal, Crosshair, Map, Pause, Play, SlidersHorizontal, Maximize, Minimize, X, Footprints, Route, RotateCcw, ArrowUp, Move, Eye, DoorOpen, ArrowUpRight, BedDouble } from 'lucide'
+import { createIcons, SquareTerminal, Crosshair, Map, Pause, Play, SlidersHorizontal, Maximize, Minimize, X, Footprints, Route, RotateCcw, ArrowUp, Move, Eye, DoorOpen, ArrowUpRight, BedDouble, Activity, ScanLine, LocateFixed, ArrowRight, ArrowLeftRight } from 'lucide'
 import { CITY, districtAt, streetIndex } from './layout.js'
 import { VENUES } from './venues.js'
 
-const icons = { SquareTerminal, Crosshair, Map, Pause, Play, SlidersHorizontal, Maximize, Minimize, X, Footprints, Route, RotateCcw, ArrowUp, Move, Eye, DoorOpen, ArrowUpRight, BedDouble }
+const icons = { SquareTerminal, Crosshair, Map, Pause, Play, SlidersHorizontal, Maximize, Minimize, X, Footprints, Route, RotateCcw, ArrowUp, Move, Eye, DoorOpen, ArrowUpRight, BedDouble, Activity, ScanLine, LocateFixed, ArrowRight, ArrowLeftRight }
 const paintIcons = () => createIcons({ icons, attrs: { 'stroke-width': 1.5, 'aria-hidden': 'true' } })
 const icon = name => `<i data-lucide="${name}"></i>`
 const button = (id, name, label, extra = '') => `<button id="${id}" class="icon-button ${extra}" type="button" title="${label}" aria-label="${label}">${icon(name)}</button>`
@@ -15,6 +15,7 @@ export function createInterface() {
       <nav class="toolbar" aria-label="Simulation controls">
         <button id="enter-button" class="enter-button" type="button" title="Capture mouse. WASD to walk; mouse to look; Esc to release.">${icon('crosshair')}<span>ENTER CITY</span></button>
         <span class="toolbar-divider"></span>
+        ${button('lab-button', 'activity', 'City Lab')}
         ${button('places-button', 'door-open', 'Places and interiors')}
         ${button('map-button', 'map', 'Toggle city map')}
         ${button('pause-button', 'pause', 'Pause simulation')}
@@ -24,6 +25,12 @@ export function createInterface() {
     </header>
     <main id="viewport" aria-label="City simulation">
       <canvas id="city" tabindex="0" aria-label="First-person ASCII city. WASD to move, mouse or arrow keys to look, Space to jump, Shift to run."></canvas>
+      <div id="reveal-controls" class="reveal-controls" hidden>
+        <span class="reveal-tag reveal-ascii">ASCII</span><span class="reveal-tag reveal-solid">SOLID 3D</span>
+        <div id="reveal-divider" class="reveal-divider"><span>${icon('arrow-left-right')}</span></div>
+        <input id="reveal-position" class="reveal-range" type="range" min="0" max="100" step="1" value="50" aria-label="ASCII and solid split position" title="Drag to compare ASCII and solid 3D" />
+      </div>
+      <div class="scanner-action">${button('scan-button', 'scan-line', 'Scan building (Q)')}<span id="scan-hint">SCAN</span></div>
       <div class="scene-top scene-id"><span class="tiny-cross">+</span> WORLD_${CITY.seed}<span class="scene-divider">/</span><span id="view-state">STREET LEVEL</span></div>
       <div class="compass" aria-label="Heading"><div class="compass-track"><span id="heading-left">NW</span><span class="compass-ticks">: . .</span><strong id="heading">N</strong><span class="compass-ticks">. . :</span><span id="heading-right">NE</span></div><span class="compass-needle">|</span><span id="bearing">355</span></div>
       <div class="scene-top scene-signal"><span class="signal-bars"><i></i><i></i><i></i><i></i></span> LOCAL CONNECTION</div>
@@ -34,6 +41,30 @@ export function createInterface() {
         <div id="move-pad" class="stick" role="group" aria-label="Movement joystick"><span class="stick-axis horizontal"></span><span class="stick-axis vertical"></span><span class="stick-knob">${icon('move')}</span></div>
         <div class="touch-right">${button('jump-button', 'arrow-up', 'Jump', 'jump-button')}<div id="look-pad" class="stick" role="group" aria-label="Look joystick"><span class="stick-axis horizontal"></span><span class="stick-axis vertical"></span><span class="stick-knob">${icon('eye')}</span></div></div>
       </div>
+      <section id="lab-panel" class="settings-panel lab-panel" role="dialog" aria-modal="false" aria-labelledby="lab-title" hidden>
+        <div class="panel-heading"><div><span class="lab-eyebrow">REALTIME / ${CITY.seed}</span><h2 id="lab-title">CITY LAB</h2></div>${button('close-lab', 'x', 'Close City Lab')}</div>
+        <div class="lab-section">
+          <div class="lab-section-heading"><h3>RENDER PIPELINE</h3><span id="render-buffer">-- x --</span></div>
+          <div class="render-modes" role="group" aria-label="Render mode"><button type="button" data-render-mode="ascii" aria-pressed="true">ASCII</button><button type="button" data-render-mode="split" aria-pressed="false">SPLIT</button><button type="button" data-render-mode="solid" aria-pressed="false">SOLID 3D</button></div>
+          <div id="lab-reveal-setting" class="setting-block lab-reveal-setting" hidden><label for="lab-reveal">ASCII coverage <output id="lab-reveal-value">50%</output></label><input id="lab-reveal" type="range" min="0" max="100" step="1" value="50" /></div>
+        </div>
+        <div class="lab-section">
+          <div class="lab-section-heading"><h3>STREAMING ATLAS</h3><span id="atlas-center">0 : 0</span></div>
+          <div id="stream-grid" class="stream-grid" role="group" aria-label="Resident city blocks">${Array.from({ length: 81 }, (_, index) => `<button type="button" class="stream-cell" data-stream-index="${index}" aria-label="City block" title="City block"><span></span></button>`).join('')}</div>
+          <div class="atlas-legend"><span><i class="legend-resident"></i>RESIDENT</span><span><i class="legend-new"></i>NEW</span><span><i class="legend-interior"></i>INTERIOR</span></div>
+          <dl class="lab-stats"><div><dt>Loaded</dt><dd id="stat-resident">81 / 81</dd></div><div><dt>Generated</dt><dd id="stat-generated">81</dd></div><div><dt>Unloaded</dt><dd id="stat-unloaded">0</dd></div><div><dt>Rebases</dt><dd id="stat-rebases">0</dd></div></dl>
+          <div class="atlas-actions"><button id="lab-jump" class="lab-command" type="button" title="Travel one kilometer east along a street">${icon('arrow-right')}+1 KM</button><button id="lab-return" class="lab-command" type="button" disabled title="Return to the previous checkpoint">${icon('rotate-ccw')}RETURN</button></div>
+        </div>
+        <div class="lab-section lab-performance"><div class="lab-section-heading"><h3>SCENE TELEMETRY</h3><span id="lab-frame-time">-- MS</span></div><dl class="lab-stats"><div><dt>Draw calls</dt><dd id="stat-calls">--</dd></div><div><dt>Triangles</dt><dd id="stat-triangles">--</dd></div><div><dt>Colliders</dt><dd id="stat-colliders">--</dd></div><div><dt>Floor plans</dt><dd id="stat-floors">--</dd></div></dl><div class="lab-origin"><span>LOCAL ORIGIN</span><span id="lab-origin">+0 / +0</span></div></div>
+        <div class="panel-build">LIVE DATA<span>WORLD / ${CITY.seed}</span></div>
+      </section>
+      <section id="scan-panel" class="scan-panel" role="region" aria-labelledby="scan-title" hidden>
+        <div class="scan-heading"><span id="scan-state">IDENTIFIED</span>${button('clear-scan', 'x', 'Clear scan')}</div>
+        <h2 id="scan-title">NO SIGNAL</h2><p id="scan-subtitle">--</p>
+        <dl class="scan-stats"><div><dt>Distance</dt><dd id="scan-distance">--</dd></div><div><dt>Floors</dt><dd id="scan-floors">--</dd></div><div><dt>Footprint</dt><dd id="scan-size">--</dd></div></dl>
+        <div class="scan-address"><span id="scan-address">--</span><span id="scan-seed">--</span></div>
+        <div class="scan-actions"><button id="scan-entrance" class="lab-command" type="button">${icon('locate-fixed')}ENTRANCE</button><button id="scan-interior" class="lab-command" type="button">${icon('door-open')}INTERIOR</button></div>
+      </section>
       <section id="places-panel" class="settings-panel places-panel" role="dialog" aria-modal="false" aria-labelledby="places-title" hidden>
         <div class="panel-heading"><h2 id="places-title">PLACES / INTERIORS</h2>${button('close-places', 'x', 'Close places')}</div>
         <div class="places-list">${VENUES.map(venue => `<button type="button" class="place-button" data-venue="${venue.type}" aria-label="Visit ${venue.name}"><span class="place-marker" style="--venue-color: ${venue.accent}"></span><span><strong>${venue.name}</strong><small>${venue.type}</small></span>${icon('arrow-up-right')}</button>`).join('')}</div>
@@ -67,6 +98,10 @@ export function createInterface() {
   elements['places-button'].setAttribute('aria-haspopup', 'dialog')
   elements['places-button'].setAttribute('aria-expanded', 'false')
   elements['places-button'].setAttribute('aria-controls', 'places-panel')
+  elements['lab-button'].setAttribute('aria-haspopup', 'dialog')
+  elements['lab-button'].setAttribute('aria-expanded', 'false')
+  elements['lab-button'].setAttribute('aria-controls', 'lab-panel')
+  elements['scan-button'].setAttribute('aria-controls', 'scan-panel')
 
   function setButton(id, name, label) {
     elements[id].innerHTML = icon(name)
@@ -139,7 +174,8 @@ export function createInterface() {
     elements.bearing.textContent = `${Math.round(bearing).toString().padStart(3, '0')}`
     elements.clock.textContent = new Date(Date.UTC(2026, 0, 1, 23, 8) + time * 1000).toISOString().slice(11, 19)
     elements.fps.textContent = Math.round(fps)
-    elements.resolution.textContent = `${renderer.columns} x ${renderer.rows} CHARS`
+    elements.resolution.textContent = renderer.mode === 'solid' ? `${renderer.target.width} x ${renderer.target.height} PX` : `${renderer.columns} x ${renderer.rows} CHARS`
+    document.querySelector('.status-right .status-extra').textContent = renderer.mode === 'solid' ? 'SOLID / RGB' : renderer.mode === 'split' ? 'ASCII + 3D' : ['ASCII / RGB', 'ASCII / GRN', 'ASCII / AMB'][renderer.uniforms.palette.value]
     elements['map-sector'].textContent = `GRID ${streetIndex(position.x)} : ${streetIndex(position.z, 'z')}`
     if (!elements['map-panel'].hidden) drawMap(layout, position, yaw)
   }

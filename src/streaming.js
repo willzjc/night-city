@@ -12,6 +12,8 @@ export class StreamingLayout {
     this.blocks = []
     this.buildings = []
     this.revision = 0
+    this.metrics = { generated: 0, unloaded: 0, originShifts: 0 }
+    this.lastChange = { added: [], removed: [] }
     this.center = { column: Infinity, row: Infinity }
     this.update({ ...SPAWN, y: 1.675 })
   }
@@ -21,6 +23,7 @@ export class StreamingLayout {
     const column = streetIndex(position.x, 'x', this.seed)
     const row = streetIndex(position.z, 'z', this.seed)
     if (column !== this.center.column || row !== this.center.row) {
+      this.lastChange = { added: [], removed: [] }
       const wanted = new Set()
       for (let offsetZ = -this.radius; offsetZ <= this.radius; offsetZ++) {
         for (let offsetX = -this.radius; offsetX <= this.radius; offsetX++) {
@@ -30,6 +33,8 @@ export class StreamingLayout {
             const block = createBlock(column + offsetX, row + offsetZ, this.seed)
             this.chunks.set(key, block)
             this.collisionGroups.set(`block/${key}`, block.colliders)
+            this.metrics.generated++
+            this.lastChange.added.push(key)
           }
         }
       }
@@ -37,6 +42,8 @@ export class StreamingLayout {
         if (!wanted.has(key)) {
           this.chunks.delete(key)
           this.collisionGroups.delete(`block/${key}`)
+          this.metrics.unloaded++
+          this.lastChange.removed.push(key)
         }
       }
       this.blocks = [...this.chunks.values()]
@@ -70,6 +77,7 @@ export class StreamingLayout {
     }
     if (Math.max(Math.abs(position.x - this.origin.x), Math.abs(position.z - this.origin.z)) > CITY.rebaseDistance) {
       this.origin = { x: streetCoordinate(column, 'x', this.seed), z: streetCoordinate(row, 'z', this.seed) }
+      this.metrics.originShifts++
       changed = true
     }
     if (changed) this.revision++

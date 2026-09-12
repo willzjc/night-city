@@ -1,14 +1,32 @@
 # Night City
 
-### A neon metropolis. An endless walk. Entirely ASCII.
+### Walk the city. Reveal the simulation.
 
 Walk past the last block. Another neighborhood appears. Follow the neon into a late-night noodle bar, climb the stairs to an apartment, or watch traffic disappear into the rain.
 
 **Night City is a playable, first-person cyberpunk city rendered as colored characters on a black screen.** Not a screenshot filter or a looping animation: a real 3D world with collision, procedural interiors, animated street life, and somewhere else to go.
 
+Now it is also a hands-on rendering and procedural-generation tech demo. Compare ASCII with the underlying solid 3D scene, watch blocks stream through a live atlas, and scan the architecture to explore what was generated.
+
 ![Night City: a first-person neon streetscape rendered in colored ASCII](docs/screenshots/night-city.png)
 
-**[Get started](#get-started) | [Explore the interiors](#behind-the-neon) | [How it works](#under-the-characters) | [Controls](#controls)**
+**[Get started](#get-started) | [Try the tech demo](#try-the-tech-demo) | [Explore the interiors](#behind-the-neon) | [How it works](#under-the-characters)**
+
+## Try the Tech Demo
+
+Three experiments, all running on the same live city:
+
+1. **Reveal the render pipeline.** Open **City Lab** using the waveform icon or `L`, then select **Split**. Drag the divider across the screen: one side is ASCII, the other is the actual solid 3D scene, with the same perspective, people, cars, and weather. Switch to **Solid 3D** to inspect the geometry or back to **ASCII** for the original look. Pause the city to compare a single frame.
+2. **Watch the world stream.** The Lab's 9-by-9 atlas shows resident, newly generated, pending-render, and interior-loaded blocks. Click a block to inspect its building. Use **+1 KM** to jump to another neighborhood and see the generated/unloaded counters change while the resident count stays bounded, then **Return** to the previous position. Longer travel also exposes the floating-origin rebase counter.
+3. **Scan a building, then go inside.** Aim at a facade and press `Q` or the scan icon. A ground sweep and building outline identify the nearest building along your view, revealing its venue, use, floor count, footprint, coordinates, and seed. **Entrance** takes you to the door; **Interior** opens that specific building, not a generic room.
+
+![The same city rendered simultaneously in ASCII and solid 3D](docs/screenshots/comparison.png)
+
+| Live City Lab | Building Scanner |
+| :---: | :---: |
+| ![City Lab with a streaming atlas, rendering controls, and measured scene statistics](docs/screenshots/city-lab.png) | ![A scanned building with its identity, dimensions, and entrance and interior actions](docs/screenshots/scan.png) |
+
+The counters come from the running simulation and renderer: scene draw calls, triangles, resident colliders, loaded floor plans, and elapsed frame time. The atlas and scan use the generated world's data rather than a separate demonstration map. ASCII remains the default; solid and split views are optional inspection modes.
 
 ## Keep Walking
 
@@ -79,12 +97,19 @@ npm run preview
 | Pause / resume | `P` or the pause button |
 | Map | `M` or the map button |
 | Reset position | `R` or **Display Config > Reset position** |
+| City Lab | `L` or the waveform icon |
+| Scan a building | `Q` or the scan icon |
+| Inspect rendering | **City Lab > ASCII / Split / Solid 3D** |
+| Compare both render modes | Drag the split divider or use **ASCII coverage** in the Lab |
+| Jump / return | **City Lab > +1 KM / Return** |
 | Visit an interior | Door icon > **Places / Interiors** |
 | Return outside | **Places / Interiors > Return to street** |
 
 On touchscreens, the left stick moves, the right stick looks, and the up-arrow button jumps. Drag-to-look also works when mouse capture is unavailable.
 
-**Display Config** includes glyph size, full-color/green/amber palettes, phosphor glow, field of view, and a rain toggle. **Tour** follows a continuing route through new neighborhoods; manual movement takes over. Switching tabs pauses the simulation. Reduced-motion preferences disable rain by default and suppress head bob.
+**Display Config** includes glyph size, full-color/green/amber palettes, phosphor glow, field of view, and a rain toggle. **Tour** follows a continuing route through new neighborhoods; manual movement takes over. Switching tabs pauses the simulation. Reduced-motion preferences disable rain by default and suppress head bob and the animated scan sweep while preserving the selected-building outline.
+
+When mouse capture is active, press `Escape` to release it before clicking a scanner action. The scan button and Lab controls also work on touchscreens; selecting an atlas building closes the Lab on small screens to reveal its scan result.
 
 <p align="center">
 	<img src="docs/screenshots/mobile.png" width="300" alt="Night City running on a mobile viewport with touch joysticks">
@@ -102,6 +127,8 @@ The aesthetic is deliberately old-school. The machinery underneath is not.
 
 Night fog hides the rendering distance; it is not a physical city boundary. There is no generative-AI service or network request needed to invent the next block.
 
+Solid and split modes use a larger framebuffer and share the same color transform as ASCII. Returning to ASCII restores its small render target. Scanner targeting uses Three.js ray/box intersections against building bounds; its world-space outline and sweep follow origin changes and clear when the selected building unloads.
+
 | Area | Source |
 | --- | --- |
 | Streets, blocks, buildings | [src/layout.js](src/layout.js) |
@@ -111,6 +138,7 @@ Night fog hides the rendering distance; it is not a physical city boundary. Ther
 | Pedestrians and traffic | [src/actors.js](src/actors.js) |
 | Character physics | [src/physics.js](src/physics.js) |
 | ASCII rendering and weather | [src/ascii.js](src/ascii.js), [src/weather.js](src/weather.js) |
+| City Lab and building scan | [src/lab.js](src/lab.js), [src/scanner.js](src/scanner.js) |
 | Controls, HUD, and application loop | [src/controls.js](src/controls.js), [src/ui.js](src/ui.js), [src/main.js](src/main.js) |
 
 ## Tested, Not Just Pictured
@@ -125,7 +153,7 @@ The test suite covers deterministic generation, different block sizes, bounded s
 
 [GitHub Actions](.github/workflows/ci.yml) runs the simulation tests, headless desktop/mobile browser tests, and production build on pushes and pull requests. The README's local links and committed PNG screenshots are checked too.
 
-Playwright also checks actual canvas pixels and screenshots, every Places destination, indoor maps, rain, pause/resume, and mouse capture. Windows uses installed Microsoft Edge by default; other platforms use Playwright Chromium:
+Playwright also checks actual canvas pixels and screenshots, every Places destination, indoor maps, rain, pause/resume, mouse capture, split-view pixel comparisons, scanner entry actions, and kilometer-jump/return telemetry. Windows uses installed Microsoft Edge by default; other platforms use Playwright Chromium:
 
 ```sh
 npx playwright install chromium
@@ -141,6 +169,6 @@ Set `CITY_URL` to capture from a different local URL. Those images are real capt
 
 ## Scope
 
-Night City is an exploration simulation, not a full RPG. There are no missions, combat, inventory, or save-game progression. Pedestrians and traffic are ambient, non-interactive actors; vehicles are not drivable and do not collide with the player. Wet-street lighting is stylized, not ray-traced reflection.
+Night City is an exploration simulation and technical playground, not a full RPG. There are no missions, combat, inventory, or save-game progression. Pedestrians and traffic are ambient, non-interactive actors; vehicles are not drivable and do not collide with the player. Wet-street lighting is stylized, not ray-traced reflection. The building scan is an inspector, not a hacking or combat system, and the solid view is a view of the procedural geometry rather than a photorealistic renderer.
 
 Built with **Three.js**, **Rapier**, **Vite**, **Lucide**, **IBM Plex Mono**, and **Playwright**. Original procedural artwork and locations; no assets from Cyberpunk 2077 are used, and this project is not affiliated with CD PROJEKT.
